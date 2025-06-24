@@ -2,35 +2,48 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const { OpenAI } = require('openai');
 
-// Подключаемся к Telegram и OpenAI
+// Подключение к Telegram и OpenAI
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Обработка сообщений от пользователей
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
-  const prompt = msg.text;
+  const text = msg.text || '';
 
   // Отправка индикатора набора текста
   bot.sendChatAction(chatId, 'typing');
 
   try {
-    // Запрос к ChatGPT (OpenAI API)
+    // === Генерация изображения ===
+    if (/^(сгенерируй|нарисуй)/i.test(text)) {
+      const prompt = text.replace(/^(сгенерируй|нарисуй)\s*/i, '');
+
+      const image = await openai.images.generate({
+        model: 'dall-e-3', // можно заменить на 'dall-e-2'
+        prompt,
+        n: 1,
+        size: '1024x1024',
+      });
+
+      const imageUrl = image.data[0].url;
+      return bot.sendPhoto(chatId, imageUrl);
+    }
+
+    // === Генерация текста ChatGPT ===
     const completion = await openai.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: 'gpt-4', // или 'gpt-4'
+      messages: [{ role: 'user', content: text }],
+      model: 'gpt-4',
       temperature: 0.7,
       max_tokens: 1000,
     });
 
     const response = completion.choices[0].message.content;
-
-    // Отправка ответа пользователю
     bot.sendMessage(chatId, response);
   } catch (error) {
-    console.error(error);
-    bot.sendMessage(chatId, 'Произошла ошибка при обработке запроса.');
+    console.error('Ошибка:', error.message || error);
+    bot.sendMessage(chatId, '⚠️ Произошла ошибка при обработке запроса.');
   }
 });
 
-console.log('🤖 Telegram GPT Bot запущен...');
+console.log('🤖 Telegram GPT Bot с поддержкой генерации изображений запущен...');
+
